@@ -5,21 +5,25 @@ import { Handle, Position, NodeProps } from "@xyflow/react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileText, AlertTriangle, CheckCircle, Clock, UploadCloud } from "lucide-react";
+import { FileText, AlertTriangle, CheckCircle, Clock } from "lucide-react";
 
 export type MachineStatus = "Working" | "Needs Maintenance" | "Not Working" | "Review Pending" | "Report Not Filed";
 
-export interface MachineNodeData {
-  name: string;
-  status: MachineStatus;
-  healthPercentage?: number; // 0-100
-  lastReportDate?: string;
-  onFileReport?: (nodeId: string) => void; // Callback when "File Report" is clicked
-}
+// Define the complete node type that includes React Flow's required properties
+type MachineNodeType = {
+  id: string;
+  position: { x: number; y: number };
+  data: {
+    name: string;
+    status: MachineStatus;
+    healthPercentage?: number; // 0-100
+    lastReportDate?: string;
+    onFileReport?: (nodeId: string) => void;
+  };
+};
 
 const statusConfig: Record<
   MachineStatus,
@@ -62,13 +66,25 @@ const statusConfig: Record<
   },
 };
 
-const MachineNode: React.FC<NodeProps<MachineNodeData>> = ({ id, data }) => {
+// The MachineNode component receives NodeProps with our custom node type
+type MachineNodeProps = NodeProps<MachineNodeType>;
+
+const MachineNode: React.FC<MachineNodeProps> = ({ id, data }) => {
   const { theme } = useTheme();
   const isDarkMode = theme === "dark";
 
-  const { name, status, healthPercentage = 0, lastReportDate, onFileReport } = data;
+  // Access the node data with default values
+  const {
+    name = "Unnamed Machine",
+    status = "Report Not Filed",
+    healthPercentage = 0,
+    lastReportDate,
+    onFileReport,
+  } = data;
 
-  const currentStatusConfig = statusConfig[status] || statusConfig["Report Not Filed"];
+  // Type assertion for status since we know it matches MachineStatus
+  const nodeStatus = (status || "Report Not Filed") as MachineStatus;
+  const currentStatusConfig = statusConfig[nodeStatus] || statusConfig["Report Not Filed"];
   const IconComponent = currentStatusConfig.icon;
 
   return (
@@ -110,13 +126,12 @@ const MachineNode: React.FC<NodeProps<MachineNodeData>> = ({ id, data }) => {
                 <span className="text-xs font-medium text-gray-600 dark:text-gray-400">Machine Health</span>
                 <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{healthPercentage}%</span>
               </div>
-              <Progress
-                value={healthPercentage}
-                className="h-2.5"
-                indicatorClassName={
-                  healthPercentage > 70 ? "bg-green-500" : healthPercentage > 40 ? "bg-yellow-500" : "bg-red-500"
-                }
-              />
+              <div className="relative h-2 w-full overflow-hidden rounded-full bg-secondary">
+                <div
+                  className="h-full bg-green-500 transition-all duration-300"
+                  style={{ width: `${healthPercentage}%` }}
+                />
+              </div>
             </div>
           )}
 
@@ -131,19 +146,14 @@ const MachineNode: React.FC<NodeProps<MachineNodeData>> = ({ id, data }) => {
           )}
         </CardContent>
 
-        <CardFooter className="border-t p-4 dark:border-gray-700">
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-            onClick={() => onFileReport?.(id)}
-            disabled={!onFileReport}
-          >
-            <UploadCloud size={16} className="mr-2" />
-            File Maintenance Report
-          </Button>
-        </CardFooter>
-
+        {onFileReport && id && (
+          <CardFooter className="border-t p-4 dark:border-gray-700">
+            <Button variant="outline" size="sm" className="w-full" onClick={() => onFileReport?.(id)}>
+              <FileText className="mr-2 h-4 w-4" />
+              File Report
+            </Button>
+          </CardFooter>
+        )}
         {/* Handles for connecting nodes */}
         <Handle
           type="target"

@@ -10,7 +10,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { UploadCloud, FileText, AlertTriangle } from "lucide-react";
@@ -134,8 +134,8 @@ const FileReportDialog: React.FC<FileReportDialogProps> = ({ isOpen, onClose, ma
         <div className="grid gap-6 py-6">
           <div className="space-y-2">
             <h4 className="text-sm font-medium dark:text-gray-200">Option 1: Upload Report File</h4>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Upload a PDF, DOCX, or Excel file containing the report details.
+            <p className="text-sm text-muted-foreground">
+              Attach a report file (PDF, DOC, DOCX, XLS, XLSX, JPG, PNG) with a maximum size of 10MB.
             </p>
             <Button
               variant="outline"

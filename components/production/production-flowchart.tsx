@@ -16,18 +16,17 @@ import {
   useReactFlow,
   ReactFlowProvider,
   MarkerType,
-  Position,
 } from "@xyflow/react";
 import { useTheme } from "next-themes";
 import { Grid, Maximize2, Minus, Plus, RefreshCw, MapIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+
 import MachineNode, { MachineNodeData } from "./MachineNode";
 import FileReportDialog from "./FileReportDialog"; // Import the dialog
 import { useToast } from "@/hooks/use-toast"; // Import useToast
 import "@xyflow/react/dist/style.css";
 
 import { useEffect } from "react"; // Import useEffect
-import { fetchProductionLineData, ProductionLineLayout } from "./production-api-service"; // Import the placeholder API
+ // Import the placeholder API
 
 // Define layout constants for consistent spacing
 const NODE_WIDTH = 280;
@@ -226,13 +225,11 @@ const Flow = (): JSX.Element => {
   const initialNodesFromUtils = useMemo(() => getInitialNodes(handleOpenFileDialog), [handleOpenFileDialog]);
   const [nodes, setNodes, onNodesChange] = useNodesState<MachineNodeData>(initialNodesFromUtils);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const [isLoading, setIsLoading] = useState(true);
 
   // Commenting out the API call to always show mock nodes
   useEffect(() => {
     // Just fit the view to show all mock nodes
     setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100);
-    setIsLoading(false);
   }, [fitView]);
 
   const onConnect = useCallback(
