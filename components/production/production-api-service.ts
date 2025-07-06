@@ -18,19 +18,14 @@ const getAuthToken = (): string => {
   return "mock-jwt-token-server-side";
 };
 
-export const fetchProductionLineData = async (
-  lineId: string
-): Promise<ProductionLineLayout> => {
+export const fetchProductionLineData = async (lineId: string): Promise<ProductionLineLayout> => {
   const authToken = getAuthToken();
-  console.log(
-    `API CALL (Placeholder): Fetching data for production line ${lineId}`
-  );
+  console.log(`API CALL (Placeholder): Fetching data for production line ${lineId}`);
   console.log("Auth Token Used:", authToken ? "Token Present (see details below)" : "No Token");
   if (authToken) {
     // To avoid logging the actual token in a real scenario, you might log its presence or a hash
     console.log("Token details (mock):", authToken.substring(0, 15) + "...");
   }
-
 
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 1000));
@@ -102,9 +97,7 @@ export const submitMachineReport = async (
   reportData: FormData | object // FormData for file uploads, object for structured data
 ): Promise<{ success: boolean; message: string }> => {
   const authToken = getAuthToken();
-  console.log(
-    `API CALL (Placeholder): Submitting report for machine ${machineId}`
-  );
+  console.log(`API CALL (Placeholder): Submitting report for machine ${machineId}`);
   console.log("Auth Token Used:", authToken ? "Token Present" : "No Token");
   if (reportData instanceof FormData) {
     console.log("Report Data (FormData entries):");

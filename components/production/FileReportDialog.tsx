@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { UploadCloud, FileText, AlertTriangle } from "lucide-react";
 import { submitMachineReport } from "./production-api-service"; // Import the placeholder API
 
@@ -25,12 +25,7 @@ interface FileReportDialogProps {
   // onFillReport: (nodeId: string) => void; // Future implementation
 }
 
-const FileReportDialog: React.FC<FileReportDialogProps> = ({
-  isOpen,
-  onClose,
-  machineNodeId,
-  machineName,
-}) => {
+const FileReportDialog: React.FC<FileReportDialogProps> = ({ isOpen, onClose, machineNodeId, machineName }) => {
   const { toast } = useToast();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -108,7 +103,7 @@ const FileReportDialog: React.FC<FileReportDialogProps> = ({
       title: "Feature Not Available",
       description: (
         <div className="flex items-center">
-          <AlertTriangle className="h-5 w-5 mr-2 text-yellow-400" />
+          <AlertTriangle className="mr-2 h-5 w-5 text-yellow-400" />
           <span>Report filling feature is not yet set up for {machineName}.</span>
         </div>
       ),
@@ -125,7 +120,7 @@ const FileReportDialog: React.FC<FileReportDialogProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleDialogClose}>
-      <DialogContent className="sm:max-w-[480px] dark:bg-gray-800">
+      <DialogContent className="dark:bg-gray-800 sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="flex items-center dark:text-gray-100">
             <FileText className="mr-2 h-5 w-5" />
@@ -138,11 +133,15 @@ const FileReportDialog: React.FC<FileReportDialogProps> = ({
 
         <div className="grid gap-6 py-6">
           <div className="space-y-2">
-            <h4 className="font-medium text-sm dark:text-gray-200">Option 1: Upload Report File</h4>
+            <h4 className="text-sm font-medium dark:text-gray-200">Option 1: Upload Report File</h4>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Upload a PDF, DOCX, or Excel file containing the report details.
             </p>
-            <Button variant="outline" onClick={handleUploadClick} className="w-full dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700">
+            <Button
+              variant="outline"
+              onClick={handleUploadClick}
+              className="w-full dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
               <UploadCloud className="mr-2 h-4 w-4" />
               {selectedFile ? `Selected: ${selectedFile.name}` : "Choose File to Upload"}
             </Button>
@@ -167,18 +166,20 @@ const FileReportDialog: React.FC<FileReportDialogProps> = ({
               <span className="w-full border-t dark:border-gray-700" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white dark:bg-gray-800 px-2 text-gray-500 dark:text-gray-400">
-                Or
-              </span>
+              <span className="bg-white px-2 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Or</span>
             </div>
           </div>
 
           <div className="space-y-2">
-             <h4 className="font-medium text-sm dark:text-gray-200">Option 2: Fill Report Manually</h4>
-             <p className="text-xs text-gray-500 dark:text-gray-400">
+            <h4 className="text-sm font-medium dark:text-gray-200">Option 2: Fill Report Manually</h4>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               Enter the report details directly into a form (feature coming soon).
             </p>
-            <Button variant="outline" onClick={handleFillReport} className="w-full dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700">
+            <Button
+              variant="outline"
+              onClick={handleFillReport}
+              className="w-full dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
               <FileText className="mr-2 h-4 w-4" />
               Fill Report Form
             </Button>
@@ -186,7 +187,11 @@ const FileReportDialog: React.FC<FileReportDialogProps> = ({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => handleDialogClose(false)} className="dark:text-gray-400 dark:hover:bg-gray-700">
+          <Button
+            variant="ghost"
+            onClick={() => handleDialogClose(false)}
+            className="dark:text-gray-400 dark:hover:bg-gray-700"
+          >
             Cancel
           </Button>
         </DialogFooter>

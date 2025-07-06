@@ -23,21 +23,37 @@ import { Grid, Maximize2, Minus, Plus, RefreshCw, MapIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import MachineNode, { MachineNodeData } from "./MachineNode";
 import FileReportDialog from "./FileReportDialog"; // Import the dialog
-import { useToast } from "@/components/ui/use-toast"; // Import useToast
+import { useToast } from "@/hooks/use-toast"; // Import useToast
 import "@xyflow/react/dist/style.css";
 
 import { useEffect } from "react"; // Import useEffect
 import { fetchProductionLineData, ProductionLineLayout } from "./production-api-service"; // Import the placeholder API
 
-// Define initial layout positions
-const initialNodePositions = {
-  "machine-1": { x: 50, y: 150 },
-  "machine-2": { x: 350, y: 150 },
-  "machine-3": { x: 650, y: 150 },
-  "machine-4-branch": { x: 350, y: 350 }, // Branching node
-  "machine-5": { x: 950, y: 150 },
-};
+// Define layout constants for consistent spacing
+const NODE_WIDTH = 280;
+const NODE_HEIGHT = 180;
+const HORIZONTAL_SPACING = 120;
+const VERTICAL_SPACING = 100;
+const START_X = 50;
+const START_Y = 100;
 
+// Define initial layout positions with improved spacing and organization
+const initialNodePositions = {
+  // Main flow (left to right)
+  "machine-1": { x: START_X, y: START_Y },
+  "machine-2": { x: START_X + NODE_WIDTH + HORIZONTAL_SPACING, y: START_Y },
+  "machine-3": { x: START_X + (NODE_WIDTH + HORIZONTAL_SPACING) * 2, y: START_Y },
+  // Branch node (positioned between machine-2 and machine-3)
+  "machine-4-branch": {
+    x: START_X + (NODE_WIDTH + HORIZONTAL_SPACING) * 1.5,
+    y: START_Y + NODE_HEIGHT + VERTICAL_SPACING / 2,
+  },
+  // Last node in the main flow
+  "machine-5": {
+    x: START_X + (NODE_WIDTH + HORIZONTAL_SPACING) * 3,
+    y: START_Y,
+  },
+};
 
 const getInitialNodes = (onFileReport: (nodeId: string) => void): Node<MachineNodeData>[] => [
   {
@@ -99,7 +115,7 @@ const getInitialNodes = (onFileReport: (nodeId: string) => void): Node<MachineNo
       onFileReport,
     },
   },
-    {
+  {
     id: "machine-6-stopped",
     type: "machine",
     position: { x: 1250, y: 150 },
@@ -135,9 +151,9 @@ const initialEdges: Edge[] = [
     source: "machine-2",
     target: "machine-4-branch",
     sourceHandle: "bottom", // Assuming machine-2 has a 'bottom' source handle
-    targetHandle: "top",   // Assuming machine-4-branch has a 'top' target handle
+    targetHandle: "top", // Assuming machine-4-branch has a 'top' target handle
     animated: true,
-    type: 'smoothstep',
+    type: "smoothstep",
     style: { strokeWidth: 2, strokeDasharray: "5 5", stroke: "#f97316" }, // Different color for branch
     markerEnd: { type: MarkerType.ArrowClosed, color: "#f97316" },
   },
@@ -145,10 +161,10 @@ const initialEdges: Edge[] = [
     id: "e4b-3", // Edge from branching machine-4-branch back to machine-3
     source: "machine-4-branch",
     target: "machine-3",
-    sourceHandle: "top",   // Assuming machine-4-branch has a 'top' source handle
+    sourceHandle: "top", // Assuming machine-4-branch has a 'top' source handle
     targetHandle: "bottom", // Assuming machine-3 has a 'bottom' target handle
     animated: true,
-    type: 'smoothstep',
+    type: "smoothstep",
     style: { strokeWidth: 2, strokeDasharray: "5 5", stroke: "#f97316" },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#f97316" },
   },
@@ -160,7 +176,7 @@ const initialEdges: Edge[] = [
     style: { strokeWidth: 2, strokeDasharray: "5 5" },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#2dd4bf" },
   },
-    {
+  {
     id: "e5-6",
     source: "machine-5",
     target: "machine-6-stopped",
@@ -188,16 +204,19 @@ const Flow = (): JSX.Element => {
   const [selectedNodeForReport, setSelectedNodeForReport] = useState<Node<MachineNodeData> | null>(null);
   const { toast } = useToast();
 
-  const handleOpenFileDialog = useCallback((nodeId: string) => {
-    const node = getNode(nodeId);
-    if (node) {
-      setSelectedNodeForReport(node as Node<MachineNodeData>);
-      setIsFileDialogOpen(true);
-    } else {
-      console.error(`Node with ID ${nodeId} not found.`);
-      toast({ variant: "destructive", title: "Error", description: `Node ${nodeId} not found.`});
-    }
-  }, [getNode, toast]); // Added toast to dependencies of useCallback
+  const handleOpenFileDialog = useCallback(
+    (nodeId: string) => {
+      const node = getNode(nodeId);
+      if (node) {
+        setSelectedNodeForReport(node as Node<MachineNodeData>);
+        setIsFileDialogOpen(true);
+      } else {
+        console.error(`Node with ID ${nodeId} not found.`);
+        toast({ variant: "destructive", title: "Error", description: `Node ${nodeId} not found.` });
+      }
+    },
+    [getNode, toast]
+  ); // Added toast to dependencies of useCallback
 
   const handleCloseFileDialog = () => {
     setIsFileDialogOpen(false);
@@ -209,57 +228,25 @@ const Flow = (): JSX.Element => {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Commenting out the API call to always show mock nodes
   useEffect(() => {
-    const loadData = async () => {
-      setIsLoading(true);
-      try {
-        const layout = await fetchProductionLineData("line-1");
+    // Just fit the view to show all mock nodes
+    setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100);
+    setIsLoading(false);
+  }, [fitView]);
 
-        if (layout.nodes && layout.nodes.length > 0) {
-          const nodesWithCallbacks = layout.nodes.map(node => ({
-            ...node,
-            data: {
-              ...node.data,
-              onFileReport: handleOpenFileDialog,
-            }
-          }));
-          setNodes(nodesWithCallbacks);
-          setEdges(layout.edges || []);
-        } else {
-          console.warn("API returned no nodes, using initial mock data from getInitialNodes.");
-          setNodes(initialNodesFromUtils);
-          setEdges(initialEdges);
-        }
-        setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100);
-
-      } catch (error) {
-        console.error("Failed to load production line data:", error);
-        toast({
-          variant: "destructive",
-          title: "Error Loading Data",
-          description: "Could not fetch production line data. Displaying default mock data.",
-        });
-        setNodes(initialNodesFromUtils);
-        setEdges(initialEdges);
-        setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadData();
-  }, [setNodes, setEdges, fitView, toast, handleOpenFileDialog, initialNodesFromUtils]);
-
-  const onConnect = useCallback((params: Connection | Edge) => {
-    const newEdge = {
+  const onConnect = useCallback(
+    (params: Connection | Edge) => {
+      const newEdge = {
         ...params,
         animated: true,
         style: { strokeWidth: 2, strokeDasharray: "5 5" },
         markerEnd: { type: MarkerType.ArrowClosed, color: isDarkMode ? "#60A5FA" : "#2563EB" },
-    };
-    setEdges(eds => addEdge(newEdge, eds));
-  }, [setEdges, isDarkMode]);
-
+      };
+      setEdges(eds => addEdge(newEdge, eds));
+    },
+    [setEdges, isDarkMode]
+  );
 
   const toggleGrid = useCallback(() => setShowGrid(prev => !prev), []);
   const toggleMinimap = useCallback(() => setShowMinimap(prev => !prev), []);
@@ -287,8 +274,8 @@ const Flow = (): JSX.Element => {
     let viewWidth = window.innerWidth;
     let viewHeight = window.innerHeight;
     if (reactFlowWrapper.current) {
-        viewWidth = reactFlowWrapper.current.clientWidth;
-        viewHeight = reactFlowWrapper.current.clientHeight;
+      viewWidth = reactFlowWrapper.current.clientWidth;
+      viewHeight = reactFlowWrapper.current.clientHeight;
     }
 
     // Target viewport center based on content center
@@ -308,31 +295,33 @@ const Flow = (): JSX.Element => {
         return node; // Keep position if not in initial set (e.g. newly added)
       })
     );
-    fitView({padding: 0.2, duration: 300});
-
-
+    fitView({ padding: 0.2, duration: 300 });
   }, [fitView, setNodes, setCenter, getViewport]);
 
-  const defaultEdgeOptions = useMemo(() => ({
-    animated: true,
-    style: {
-      stroke: resolvedTheme === "dark" ? "#4A5568" : "#A0AEC0", // Tailwind gray-600 / gray-500
-      strokeWidth: 2,
-      strokeDasharray: "5 5",
-    },
-    markerEnd: {
-      type: MarkerType.ArrowClosed,
-      color: resolvedTheme === "dark" ? "#60A5FA" : "#2563EB", // Tailwind blue-400 / blue-600
-    },
-  }), [resolvedTheme]);
-
+  const defaultEdgeOptions = useMemo(
+    () => ({
+      animated: true,
+      style: {
+        stroke: resolvedTheme === "dark" ? "#4A5568" : "#A0AEC0", // Tailwind gray-600 / gray-500
+        strokeWidth: 2,
+        strokeDasharray: "5 5",
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: resolvedTheme === "dark" ? "#60A5FA" : "#2563EB", // Tailwind blue-400 / blue-600
+      },
+    }),
+    [resolvedTheme]
+  );
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-background" ref={reactFlowWrapper}>
-       <style jsx global>{`
+      <style jsx global>{`
         // Custom styles for controls to match Shadcn/UI better
         .react-flow__controls {
-          box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1);
+          box-shadow:
+            0 1px 3px 0 rgba(0, 0, 0, 0.1),
+            0 1px 2px -1px rgba(0, 0, 0, 0.1);
           border-radius: 0.5rem; /* lg */
           overflow: hidden;
           background: transparent !important;
@@ -411,56 +400,81 @@ const Flow = (): JSX.Element => {
         )}
 
         {showMinimap && (
-            <MiniMap
-            nodeStrokeColor={(n) => {
-                if (n.type === 'machine') {
+          <MiniMap
+            nodeStrokeColor={n => {
+              if (n.type === "machine") {
                 const status = (n.data as MachineNodeData).status;
-                if (status === 'Not Working') return '#ef4444'; // red-500
-                if (status === 'Needs Maintenance') return '#f97316'; // orange-500
-                if (status === 'Working') return '#22c55e'; // green-500
-                }
-                return isDarkMode ? '#4A5568' : '#A0AEC0';
+                if (status === "Not Working") return "#ef4444"; // red-500
+                if (status === "Needs Maintenance") return "#f97316"; // orange-500
+                if (status === "Working") return "#22c55e"; // green-500
+              }
+              return isDarkMode ? "#4A5568" : "#A0AEC0";
             }}
-            nodeColor={(n) => {
-                if (n.type === 'machine') {
+            nodeColor={n => {
+              if (n.type === "machine") {
                 const status = (n.data as MachineNodeData).status;
-                if (status === 'Not Working') return isDarkMode ? '#991b1b' : '#fee2e2'; // red-800 / red-100
-                if (status === 'Needs Maintenance') return isDarkMode ? '#9a3412' : '#ffedd5'; // orange-800 / orange-100
-                if (status === 'Working') return isDarkMode ? '#166534' : '#dcfce7'; // green-800 / green-100
-                }
-                return isDarkMode ? 'hsl(var(--card))' : 'hsl(var(--background))';
+                if (status === "Not Working") return isDarkMode ? "#991b1b" : "#fee2e2"; // red-800 / red-100
+                if (status === "Needs Maintenance") return isDarkMode ? "#9a3412" : "#ffedd5"; // orange-800 / orange-100
+                if (status === "Working") return isDarkMode ? "#166534" : "#dcfce7"; // green-800 / green-100
+              }
+              return isDarkMode ? "hsl(var(--card))" : "hsl(var(--background))";
             }}
             nodeBorderRadius={2}
             maskColor={isDarkMode ? "rgba(30, 41, 59, 0.7)" : "rgba(226, 232, 240, 0.7)"} // slate-800 / slate-200
             style={{
-                backgroundColor: isDarkMode ? "hsl(var(--muted))" : "hsl(var(--accent))",
-                borderRadius: "0.375rem", // md
-                border: `1px solid ${isDarkMode ? "hsl(var(--border))" : "hsl(var(--input))"}`,
+              backgroundColor: isDarkMode ? "hsl(var(--muted))" : "hsl(var(--accent))",
+              borderRadius: "0.375rem", // md
+              border: `1px solid ${isDarkMode ? "hsl(var(--border))" : "hsl(var(--input))"}`,
             }}
             pannable
             zoomable
             ariaLabel="Minimap of the production line"
             position="bottom-right"
-            />
+          />
         )}
 
         <Controls className="!border-none !bg-transparent" position="top-right">
-          <button type="button" onClick={() => zoomIn({ duration: 300 })} title="Zoom In" className="react-flow__controls-button">
+          <button
+            type="button"
+            onClick={() => zoomIn({ duration: 300 })}
+            title="Zoom In"
+            className="react-flow__controls-button"
+          >
             <Plus />
           </button>
-          <button type="button" onClick={() => zoomOut({ duration: 300 })} title="Zoom Out" className="react-flow__controls-button">
+          <button
+            type="button"
+            onClick={() => zoomOut({ duration: 300 })}
+            title="Zoom Out"
+            className="react-flow__controls-button"
+          >
             <Minus />
           </button>
-          <button type="button" onClick={() => fitView({ duration: 300, padding: 0.2 })} title="Fit View" className="react-flow__controls-button">
+          <button
+            type="button"
+            onClick={() => fitView({ duration: 300, padding: 0.2 })}
+            title="Fit View"
+            className="react-flow__controls-button"
+          >
             <Maximize2 />
           </button>
-           <button type="button" onClick={handleRecenter} title="Recenter View" className="react-flow__controls-button">
+          <button type="button" onClick={handleRecenter} title="Recenter View" className="react-flow__controls-button">
             <RefreshCw />
           </button>
-          <button type="button" onClick={toggleGrid} title={showGrid ? "Hide Grid" : "Show Grid"} className="react-flow__controls-button">
+          <button
+            type="button"
+            onClick={toggleGrid}
+            title={showGrid ? "Hide Grid" : "Show Grid"}
+            className="react-flow__controls-button"
+          >
             <Grid />
           </button>
-           <button type="button" onClick={toggleMinimap} title={showMinimap ? "Hide Minimap" : "Show Minimap"} className="react-flow__controls-button">
+          <button
+            type="button"
+            onClick={toggleMinimap}
+            title={showMinimap ? "Hide Minimap" : "Show Minimap"}
+            className="react-flow__controls-button"
+          >
             <MapIcon /> {/* Using MapIcon for minimap toggle */}
           </button>
         </Controls>
@@ -479,14 +493,14 @@ const Flow = (): JSX.Element => {
 
 const ProductionFlowchart: React.FC = (): JSX.Element => {
   const { Toaster } = useToast(); // Get Toaster if it's part of useToast, or import separately
-                                  // If Sonner or react-hot-toast is used, their Toaster component needs to be added here or at a higher level in the app.
-                                  // For Shadcn/UI, Toaster is usually at the root of the app.
-                                  // We'll assume Toaster is globally available or add it if necessary.
-                                  // For now, let's ensure it's noted. If using Shadcn's toast, it's usually in the main layout.
-                                  // Let's add a simple Toaster here if not present globally, for demo purposes.
-                                  // This might conflict if another Toaster is already in the app's layout.
-                                  // It's better to ensure a global Toaster exists.
-                                  // For this component, we just need `useToast`.
+  // If Sonner or react-hot-toast is used, their Toaster component needs to be added here or at a higher level in the app.
+  // For Shadcn/UI, Toaster is usually at the root of the app.
+  // We'll assume Toaster is globally available or add it if necessary.
+  // For now, let's ensure it's noted. If using Shadcn's toast, it's usually in the main layout.
+  // Let's add a simple Toaster here if not present globally, for demo purposes.
+  // This might conflict if another Toaster is already in the app's layout.
+  // It's better to ensure a global Toaster exists.
+  // For this component, we just need `useToast`.
 
   return (
     <div className="h-[calc(100vh-200px)] w-full rounded-lg border bg-background shadow-sm">
