@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useState, useRef } from "react";
+import React, { useCallback, useState, useRef, useMemo } from "react";
 import {
   ReactFlow,
   Background,
@@ -8,7 +8,6 @@ import {
   Connection,
   Controls,
   Edge,
-  EdgeProps,
   MiniMap,
   Node,
   addEdge,
@@ -16,403 +15,348 @@ import {
   useNodesState,
   useReactFlow,
   ReactFlowProvider,
+  MarkerType,
+  Position,
 } from "@xyflow/react";
 import { useTheme } from "next-themes";
-import { Grid, Maximize2, Minus, Plus, RefreshCw } from "lucide-react";
+import { Grid, Maximize2, Minus, Plus, RefreshCw, MapIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import MachineNode, { MachineNodeData } from "./MachineNode";
+import FileReportDialog from "./FileReportDialog"; // Import the dialog
+import { useToast } from "@/components/ui/use-toast"; // Import useToast
 import "@xyflow/react/dist/style.css";
 
-// Custom Node Component
-const CustomNode: React.FC<{
-  id: string;
-  data: {
-    label: string;
-    type: string;
-    status?: "todo" | "in-progress" | "done";
-    progress?: number;
-    integration?: string;
-    dueDate?: string;
-  };
-}> = ({ data }) => {
-  const { theme } = useTheme();
-  const isDarkMode = theme === "dark";
+import { useEffect } from "react"; // Import useEffect
+import { fetchProductionLineData, ProductionLineLayout } from "./production-api-service"; // Import the placeholder API
 
-  const statusColors = {
-    todo: "bg-gray-300",
-    "in-progress": "bg-blue-500",
-    done: "bg-green-500",
-  };
-
-  const statusLabels = {
-    todo: "To do",
-    "in-progress": "In progress",
-    done: "Done",
-  };
-
-  const progress = data.progress || 0;
-  const status = data.status || "todo";
-  const dueDate = data.dueDate || "No due date";
-  const integration = data.integration || "Project";
-
-  return (
-    <div className="nodrag">
-      <div
-        className={cn(
-          "w-64 overflow-hidden rounded-lg border shadow-sm transition-all hover:shadow-md",
-          isDarkMode ? "border-gray-700 bg-gray-800" : "border-gray-200 bg-white"
-        )}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b p-3">
-          <div className="flex items-center space-x-2">
-            <div className={cn("h-2 w-2 rounded-full", statusColors[status] || "bg-gray-300")} />
-            <span className="text-xs font-medium text-gray-500">{statusLabels[status] || "To do"}</span>
-          </div>
-          {integration && (
-            <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-              {integration}
-            </span>
-          )}
-        </div>
-
-        {/* Content */}
-        <div className="p-4">
-          <h3 className="mb-3 text-sm font-medium text-gray-900 dark:text-gray-100">{data.label}</h3>
-
-          {/* Progress Bar */}
-          <div className="mb-3">
-            <div className="mb-1 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-              <span>Progress</span>
-              <span>{progress}%</span>
-            </div>
-            <div className="h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
-              <div className="h-1.5 rounded-full bg-blue-600" style={{ width: `${progress}%` }} />
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-            <span>Due: {dueDate}</span>
-            <span>Details</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+// Define initial layout positions
+const initialNodePositions = {
+  "machine-1": { x: 50, y: 150 },
+  "machine-2": { x: 350, y: 150 },
+  "machine-3": { x: 650, y: 150 },
+  "machine-4-branch": { x: 350, y: 350 }, // Branching node
+  "machine-5": { x: 950, y: 150 },
 };
 
-// Custom Edge Component with Animation and Correlation Values
-const CustomEdge = ({ sourceX, sourceY, targetX, targetY, data }: Omit<EdgeProps, "markerEnd">): JSX.Element => {
-  const { theme } = useTheme();
-  const isDarkMode = theme === "dark";
 
-  // Calculate edge path (quadratic curve for better visuals)
-  const edgePath = `M${sourceX},${sourceY} Q${(sourceX + targetX) / 2} ${(sourceY + targetY) / 2 + 50} ${targetX},${targetY}`;
-
-  const isAnimated = data?.animated || false;
-
-  // Determine edge color based on correlation value if it exists
-  let edgeColor = isDarkMode ? "#4B5563" : "#9CA3AF";
-  if (data?.value !== undefined) {
-    const correlation = Number(data.value);
-    if (correlation > 0.8) {
-      edgeColor = "#10B981"; // Strong positive correlation
-    } else if (correlation > 0.5) {
-      edgeColor = "#3B82F6"; // Moderate positive correlation
-    } else if (correlation > 0) {
-      edgeColor = "#F59E0B"; // Weak positive correlation
-    } else if (correlation > -0.5) {
-      edgeColor = "#EF4444"; // Weak negative correlation
-    } else {
-      edgeColor = "#6B7280"; // Strong negative correlation
-    }
-  }
-  const edgeWidth = 2.5;
-
-  return (
-    <>
-      {/* Base path (invisible but interactive) */}
-      <path d={edgePath} stroke="transparent" strokeWidth="20" fill="none" className="cursor-pointer" />
-
-      {/* Main edge path */}
-      <path
-        d={edgePath}
-        stroke={isDarkMode ? "#374151" : "#E5E7EB"}
-        strokeWidth={edgeWidth + 2}
-        fill="none"
-        className="transition-colors duration-200"
-        style={{
-          strokeDasharray: data?.dashed ? "5,5" : "none",
-          opacity: 0.5,
-        }}
-      />
-
-      {/* Animated progress indicator */}
-      {isAnimated && (
-        <path d={edgePath} stroke={edgeColor} strokeWidth={edgeWidth} fill="none" strokeDasharray="8,4">
-          <animate attributeName="stroke-dashoffset" values="200%;0" dur="3s" repeatCount="indefinite" />
-        </path>
-      )}
-
-      {/* Invisible path for better interaction */}
-      <path d={edgePath} stroke="transparent" strokeWidth="20" fill="none" className="cursor-pointer" />
-
-      {/* Edge label */}
-      {data?.label && (
-        <g transform={`translate(${(sourceX + targetX) / 2}, ${(sourceY + targetY) / 2 - 15})`}>
-          <rect
-            x="-30"
-            y="-12"
-            width="60"
-            height="24"
-            rx="12"
-            fill={isDarkMode ? "#1F2937" : "white"}
-            stroke={edgeColor}
-            strokeWidth="1"
-            className="shadow-sm"
-          />
-          <path d="M0,-5 L10,0 L0,5" stroke={edgeColor} strokeWidth="1" className="shadow-sm" />
-          <text x="0" y="4" textAnchor="middle" fontSize="10" fontWeight="600" fill={edgeColor}>
-            {String(data.label || "")}
-          </text>
-        </g>
-      )}
-    </>
-  );
-};
-
-// Node and Edge type definitions
-const nodeTypes = { custom: CustomNode };
-const edgeTypes = { custom: CustomEdge };
-
-const initialNodes: Node[] = [
-  // Raw Material Stage
+const getInitialNodes = (onFileReport: (nodeId: string) => void): Node<MachineNodeData>[] => [
   {
-    id: "raw-material",
-    type: "custom",
-    position: { x: 100, y: 50 },
+    id: "machine-1",
+    type: "machine",
+    position: initialNodePositions["machine-1"],
     data: {
-      label: "Raw Material Inventory",
-      type: "start",
-      status: "in-progress",
-      progress: 95,
-      dueDate: "2023-07-05",
-      integration: "SAP",
+      name: "CNC Mill A-100",
+      status: "Working",
+      healthPercentage: 92,
+      lastReportDate: "2024-07-28 10:00 AM",
+      onFileReport,
     },
   },
-  // Manufacturing Stage 1
   {
-    id: "cutting",
-    type: "custom",
-    position: { x: 400, y: 50 },
+    id: "machine-2",
+    type: "machine",
+    position: initialNodePositions["machine-2"],
     data: {
-      label: "Cutting & Shaping",
-      type: "process",
-      status: "in-progress",
-      progress: 75,
-      dueDate: "2023-07-08",
-      integration: "MES",
+      name: "Lathe LX-25",
+      status: "Needs Maintenance",
+      healthPercentage: 45,
+      lastReportDate: "2024-07-27 08:00 PM",
+      onFileReport,
     },
   },
-  // Manufacturing Stage 2
   {
-    id: "assembly",
-    type: "custom",
-    position: { x: 700, y: 50 },
+    id: "machine-3",
+    type: "machine",
+    position: initialNodePositions["machine-3"],
     data: {
-      label: "Assembly Line",
-      type: "process",
-      status: "in-progress",
-      progress: 30,
-      dueDate: "2023-07-12",
-      integration: "MES",
+      name: "Robotic Arm KUKA-3",
+      status: "Review Pending",
+      healthPercentage: 70,
+      lastReportDate: "2024-07-28 02:00 PM",
+      onFileReport,
     },
   },
-  // Quality Control
   {
-    id: "quality-check",
-    type: "custom",
-    position: { x: 400, y: 200 },
+    id: "machine-4-branch", // Branching machine
+    type: "machine",
+    position: initialNodePositions["machine-4-branch"],
     data: {
-      label: "Quality Control",
-      type: "decision",
-      status: "todo",
-      progress: 0,
-      dueDate: "2023-07-15",
-      integration: "QMS",
+      name: "Grinder G-50 (Aux)",
+      status: "Working",
+      healthPercentage: 88,
+      lastReportDate: "2024-07-28 09:30 AM",
+      onFileReport,
     },
   },
-  // Packaging
   {
-    id: "packaging",
-    type: "custom",
-    position: { x: 700, y: 350 },
+    id: "machine-5",
+    type: "machine",
+    position: initialNodePositions["machine-5"],
     data: {
-      label: "Packaging",
-      type: "process",
-      status: "todo",
-      progress: 0,
-      dueDate: "2023-07-18",
-      integration: "WMS",
+      name: "Assembly Station AS-7",
+      status: "Report Not Filed",
+      healthPercentage: 0, // Or some default/unknown value
+      onFileReport,
     },
   },
-  // Shipping
-  {
-    id: "shipping",
-    type: "custom",
-    position: { x: 1000, y: 350 },
+    {
+    id: "machine-6-stopped",
+    type: "machine",
+    position: { x: 1250, y: 150 },
     data: {
-      label: "Shipping & Distribution",
-      type: "end",
-      status: "todo",
-      progress: 0,
-      dueDate: "2023-07-20",
-      integration: "TMS",
-    },
-  },
-  // Rework (conditional)
-  {
-    id: "rework",
-    type: "custom",
-    position: { x: 400, y: 500 },
-    data: {
-      label: "Rework Station",
-      type: "process",
-      status: "todo",
-      progress: 0,
-      dueDate: "2023-07-16",
-      integration: "MES",
+      name: "Packaging Unit P-2",
+      status: "Not Working",
+      healthPercentage: 5,
+      lastReportDate: "2024-07-26 05:00 PM",
+      onFileReport,
     },
   },
 ];
 
 const initialEdges: Edge[] = [
-  // Main production flow
   {
-    id: "e1",
-    source: "raw-material",
-    target: "cutting",
-    type: "custom",
-    data: {
-      value: 0.9,
-      label: "Transfer",
-      animated: true,
-      progress: 95,
-    },
+    id: "e1-2",
+    source: "machine-1",
+    target: "machine-2",
+    animated: true,
+    style: { strokeWidth: 2, strokeDasharray: "5 5" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#2dd4bf" },
   },
   {
-    id: "e2",
-    source: "cutting",
-    target: "assembly",
-    type: "custom",
-    data: {
-      value: 0.8,
-      label: "Next Stage",
-      animated: true,
-      progress: 75,
-    },
+    id: "e2-3",
+    source: "machine-2",
+    target: "machine-3",
+    animated: true,
+    style: { strokeWidth: 2, strokeDasharray: "5 5" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#2dd4bf" },
   },
   {
-    id: "e3",
-    source: "assembly",
-    target: "quality-check",
-    type: "custom",
-    data: {
-      value: 0.7,
-      label: "For QC",
-      animated: true,
-      progress: 30,
-    },
+    id: "e2-4b", // Edge from machine-2 to the branching machine-4-branch
+    source: "machine-2",
+    target: "machine-4-branch",
+    sourceHandle: "bottom", // Assuming machine-2 has a 'bottom' source handle
+    targetHandle: "top",   // Assuming machine-4-branch has a 'top' target handle
+    animated: true,
+    type: 'smoothstep',
+    style: { strokeWidth: 2, strokeDasharray: "5 5", stroke: "#f97316" }, // Different color for branch
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#f97316" },
   },
   {
-    id: "e4",
-    source: "decision1",
-    target: "process3",
-    type: "custom",
-    label: "Revise",
-    data: { value: -0.64 },
+    id: "e4b-3", // Edge from branching machine-4-branch back to machine-3
+    source: "machine-4-branch",
+    target: "machine-3",
+    sourceHandle: "top",   // Assuming machine-4-branch has a 'top' source handle
+    targetHandle: "bottom", // Assuming machine-3 has a 'bottom' target handle
+    animated: true,
+    type: 'smoothstep',
+    style: { strokeWidth: 2, strokeDasharray: "5 5", stroke: "#f97316" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#f97316" },
   },
   {
-    id: "e5",
-    source: "process2",
-    target: "end",
-    type: "custom",
-    data: { value: 0.95 },
+    id: "e3-5",
+    source: "machine-3",
+    target: "machine-5",
+    animated: true,
+    style: { strokeWidth: 2, strokeDasharray: "5 5" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#2dd4bf" },
   },
-  {
-    id: "e6",
-    source: "process3",
-    target: "process1",
-    type: "custom",
-    data: { value: -0.45 },
+    {
+    id: "e5-6",
+    source: "machine-5",
+    target: "machine-6-stopped",
+    animated: true,
+    style: { strokeWidth: 2, strokeDasharray: "5 5" },
+    markerEnd: { type: MarkerType.ArrowClosed, color: "#ef4444" }, // Red for connection to stopped machine
   },
 ];
+
+// Node and Edge type definitions
+const nodeTypes = { machine: MachineNode };
+// const edgeTypes = { custom: CustomEdge }; // We can define custom edges later if needed
 
 // Inner component that contains the flow logic
 const Flow = (): JSX.Element => {
   const { resolvedTheme } = useTheme();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const setReactFlowInstance = useCallback(() => {
-    // Instance setter for React Flow
-  }, []);
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const onConnect = useCallback((params: Connection | Edge) => setEdges(eds => addEdge(params, eds)), [setEdges]);
-  const { fitView, zoomIn, zoomOut, setViewport } = useReactFlow();
+  const { fitView, zoomIn, zoomOut, setCenter, getViewport, getNode } = useReactFlow();
   const [showGrid, setShowGrid] = useState(true);
+  const [showMinimap, setShowMinimap] = useState(true);
   const isDarkMode = resolvedTheme === "dark";
 
-  const toggleGrid = useCallback(() => {
-    setShowGrid(prev => !prev);
-  }, []);
+  // State for controlling the dialog
+  const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
+  const [selectedNodeForReport, setSelectedNodeForReport] = useState<Node<MachineNodeData> | null>(null);
+  const { toast } = useToast();
 
-  const handleReset = useCallback(() => {
-    setNodes(initialNodes);
-    setEdges(initialEdges);
-    setViewport({ x: 0, y: 0, zoom: 1 });
-    fitView();
-  }, [setNodes, setEdges, setViewport, fitView]);
+  const handleOpenFileDialog = useCallback((nodeId: string) => {
+    const node = getNode(nodeId);
+    if (node) {
+      setSelectedNodeForReport(node as Node<MachineNodeData>);
+      setIsFileDialogOpen(true);
+    } else {
+      console.error(`Node with ID ${nodeId} not found.`);
+      toast({ variant: "destructive", title: "Error", description: `Node ${nodeId} not found.`});
+    }
+  }, [getNode, toast]); // Added toast to dependencies of useCallback
+
+  const handleCloseFileDialog = () => {
+    setIsFileDialogOpen(false);
+    setSelectedNodeForReport(null);
+  };
+
+  const initialNodesFromUtils = useMemo(() => getInitialNodes(handleOpenFileDialog), [handleOpenFileDialog]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<MachineNodeData>(initialNodesFromUtils);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const layout = await fetchProductionLineData("line-1");
+
+        if (layout.nodes && layout.nodes.length > 0) {
+          const nodesWithCallbacks = layout.nodes.map(node => ({
+            ...node,
+            data: {
+              ...node.data,
+              onFileReport: handleOpenFileDialog,
+            }
+          }));
+          setNodes(nodesWithCallbacks);
+          setEdges(layout.edges || []);
+        } else {
+          console.warn("API returned no nodes, using initial mock data from getInitialNodes.");
+          setNodes(initialNodesFromUtils);
+          setEdges(initialEdges);
+        }
+        setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100);
+
+      } catch (error) {
+        console.error("Failed to load production line data:", error);
+        toast({
+          variant: "destructive",
+          title: "Error Loading Data",
+          description: "Could not fetch production line data. Displaying default mock data.",
+        });
+        setNodes(initialNodesFromUtils);
+        setEdges(initialEdges);
+        setTimeout(() => fitView({ padding: 0.2, duration: 300 }), 100);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, [setNodes, setEdges, fitView, toast, handleOpenFileDialog, initialNodesFromUtils]);
+
+  const onConnect = useCallback((params: Connection | Edge) => {
+    const newEdge = {
+        ...params,
+        animated: true,
+        style: { strokeWidth: 2, strokeDasharray: "5 5" },
+        markerEnd: { type: MarkerType.ArrowClosed, color: isDarkMode ? "#60A5FA" : "#2563EB" },
+    };
+    setEdges(eds => addEdge(newEdge, eds));
+  }, [setEdges, isDarkMode]);
+
+
+  const toggleGrid = useCallback(() => setShowGrid(prev => !prev), []);
+  const toggleMinimap = useCallback(() => setShowMinimap(prev => !prev), []);
+
+  const handleRecenter = useCallback(() => {
+    // Option 1: Fit view to all nodes
+    // fitView({ padding: 0.2, duration: 300 });
+
+    // Option 2: Center on a specific point or the average of initial positions
+    // For simplicity, let's try to center around the initial main flow area.
+    // We can calculate the center of the initialNodes.
+    // This is a simplified recenter; a more robust one might involve Dagre or Elk for layout.
+
+    const xPositions = Object.values(initialNodePositions).map(p => p.x);
+    const yPositions = Object.values(initialNodePositions).map(p => p.y);
+    const avgX = xPositions.reduce((sum, x) => sum + x, 0) / xPositions.length;
+    const avgY = yPositions.reduce((sum, y) => sum + y, 0) / yPositions.length;
+    const { zoom } = getViewport();
+
+    // We also need to account for node widths to truly center the content.
+    // Average node width is ~288px (w-72).
+    // We want the center of the screen to be the center of our content.
+    // The setCenter function takes the center of the viewport.
+    // If reactFlowWrapper.current is available, use its dimensions.
+    let viewWidth = window.innerWidth;
+    let viewHeight = window.innerHeight;
+    if (reactFlowWrapper.current) {
+        viewWidth = reactFlowWrapper.current.clientWidth;
+        viewHeight = reactFlowWrapper.current.clientHeight;
+    }
+
+    // Target viewport center based on content center
+    const targetX = viewWidth / 2 - avgX * zoom;
+    const targetY = viewHeight / 2 - avgY * zoom;
+
+    setCenter(avgX, avgY, { zoom, duration: 500 });
+
+    // Restore initial node positions if they were moved
+    // This makes "recenter" also a "reset layout"
+    setNodes(currentNodes =>
+      currentNodes.map(node => {
+        const initialPosition = initialNodePositions[node.id as keyof typeof initialNodePositions];
+        if (initialPosition) {
+          return { ...node, position: initialPosition };
+        }
+        return node; // Keep position if not in initial set (e.g. newly added)
+      })
+    );
+    fitView({padding: 0.2, duration: 300});
+
+
+  }, [fitView, setNodes, setCenter, getViewport]);
+
+  const defaultEdgeOptions = useMemo(() => ({
+    animated: true,
+    style: {
+      stroke: resolvedTheme === "dark" ? "#4A5568" : "#A0AEC0", // Tailwind gray-600 / gray-500
+      strokeWidth: 2,
+      strokeDasharray: "5 5",
+    },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      color: resolvedTheme === "dark" ? "#60A5FA" : "#2563EB", // Tailwind blue-400 / blue-600
+    },
+  }), [resolvedTheme]);
+
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-background" ref={reactFlowWrapper}>
-      <style jsx global>{`
-        @keyframes dash {
-          to {
-            stroke-dashoffset: -1000;
-          }
-        }
-        .flow-animation {
-          animation: dash 20s linear infinite;
-        }
+       <style jsx global>{`
+        // Custom styles for controls to match Shadcn/UI better
         .react-flow__controls {
-          box-shadow:
-            0 1px 3px 0 rgba(0, 0, 0, 0.1),
-            0 1px 2px -1px rgba(0, 0, 0, 0.1);
-          border-radius: 0.5rem;
+          box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1);
+          border-radius: 0.5rem; /* lg */
           overflow: hidden;
           background: transparent !important;
           border: none !important;
         }
         .react-flow__controls-button {
-          background: ${isDarkMode ? "#1F2937" : "white"} !important;
-          border-bottom: 1px solid ${isDarkMode ? "#374151" : "#E5E7EB"} !important;
-          color: ${isDarkMode ? "#F3F4F6" : "#1F2937"} !important;
-          width: 32px !important;
-          height: 32px !important;
-          min-width: 32px !important;
-          min-height: 32px !important;
+          background: ${isDarkMode ? "hsl(var(--card))" : "hsl(var(--background))"} !important;
+          border-bottom: 1px solid ${isDarkMode ? "hsl(var(--border))" : "hsl(var(--border))"} !important;
+          color: hsl(var(--foreground)) !important;
+          width: 2.25rem !important; /* h-9 */
+          height: 2.25rem !important; /* w-9 */
+          min-width: 2.25rem !important;
+          min-height: 2.25rem !important;
           padding: 0 !important;
           display: flex;
           align-items: center;
           justify-content: center;
         }
         .react-flow__controls-button:hover {
-          background: ${isDarkMode ? "#374151" : "#F3F4F6"} !important;
+          background: ${isDarkMode ? "hsl(var(--muted))" : "hsl(var(--accent))"} !important;
         }
         .react-flow__controls-button svg {
-          width: 16px;
-          height: 16px;
-          fill: currentColor;
+          width: 1rem; /* h-4 */
+          height: 1rem; /* w-4 */
         }
         .react-flow__controls-button:first-child {
           border-top-left-radius: 0.5rem !important;
@@ -423,6 +367,17 @@ const Flow = (): JSX.Element => {
           border-bottom-right-radius: 0.5rem !important;
           border-bottom: none !important;
         }
+
+        // Animated dash for edges
+        .animated-dash {
+          stroke-dasharray: 5, 5;
+          animation: dashdraw 0.5s linear infinite;
+        }
+        @keyframes dashdraw {
+          to {
+            stroke-dashoffset: -10;
+          }
+        }
       `}</style>
 
       <ReactFlow
@@ -431,138 +386,123 @@ const Flow = (): JSX.Element => {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onInit={setReactFlowInstance}
         nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
+        // edgeTypes={edgeTypes} // Uncomment if using custom edges
         fitView
-        fitViewOptions={{ padding: 0.5 }}
+        fitViewOptions={{ padding: 0.2 }} // Increased padding
         minZoom={0.1}
         maxZoom={4}
-        defaultEdgeOptions={{
-          type: "custom",
-          style: {
-            stroke: resolvedTheme === "dark" ? "#4B5563" : "#9CA3AF",
-            strokeWidth: 1.5,
-          },
-        }}
+        defaultEdgeOptions={defaultEdgeOptions}
         nodesDraggable
         nodesConnectable
         elementsSelectable
         snapToGrid={showGrid}
-        snapGrid={[15, 15]}
+        snapGrid={[20, 20]} // Larger snap grid
+        connectionLineStyle={{ stroke: isDarkMode ? "#60A5FA" : "#2563EB", strokeWidth: 2 }}
+        attributionPosition="bottom-left" // Pro feature, remove if not using Pro
       >
-        {/* Custom arrow marker */}
-        <defs>
-          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill={resolvedTheme === "dark" ? "#9CA3AF" : "#6B7280"} />
-          </marker>
-        </defs>
-
-        {/* Background grid */}
         {showGrid && (
           <Background
             variant={BackgroundVariant.Dots}
-            gap={20}
-            size={1}
-            color={resolvedTheme === "dark" ? "#374151" : "#D1D5DB"}
+            gap={24} // Larger gap
+            size={1.2}
+            color={isDarkMode ? "hsl(var(--border))" : "hsl(var(--input))"}
           />
         )}
 
-        <MiniMap
-          nodeStrokeColor={n => {
-            if (n.type === "custom") {
-              switch (n.data.type) {
-                case "start":
-                  return "#3B82F6";
-                case "end":
-                  return "#EF4444";
-                case "decision":
-                  return "#F59E0B";
-                case "process":
-                default:
-                  return resolvedTheme === "dark" ? "#60A5FA" : "#2563EB";
-              }
-            }
-            return resolvedTheme === "dark" ? "#4B5563" : "#9CA3AF";
-          }}
-          nodeColor={n => {
-            if (n.type === "custom") {
-              switch (n.data.type) {
-                case "start":
-                  return resolvedTheme === "dark" ? "#1E40AF" : "#DBEAFE";
-                case "end":
-                  return resolvedTheme === "dark" ? "#991B1B" : "#FEE2E2";
-                case "decision":
-                  return resolvedTheme === "dark" ? "#92400E" : "#FEF3C7";
-                case "process":
-                default:
-                  return resolvedTheme === "dark" ? "#1F2937" : "#F9FAFB";
-              }
-            }
-            return resolvedTheme === "dark" ? "#1F2937" : "#F9FAFB";
-          }}
-          nodeBorderRadius={4}
-          maskColor={resolvedTheme === "dark" ? "rgba(17, 24, 39, 0.7)" : "rgba(249, 250, 251, 0.7)"}
-          style={{
-            backgroundColor: resolvedTheme === "dark" ? "#111827" : "#F3F4F6",
-            borderRadius: "0.5rem",
-            border: `1px solid ${resolvedTheme === "dark" ? "#374151" : "#E5E7EB"}`,
-            boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
-          }}
-          zoomable
-          pannable
-          nodeStrokeWidth={2}
-          position="bottom-right"
-        />
+        {showMinimap && (
+            <MiniMap
+            nodeStrokeColor={(n) => {
+                if (n.type === 'machine') {
+                const status = (n.data as MachineNodeData).status;
+                if (status === 'Not Working') return '#ef4444'; // red-500
+                if (status === 'Needs Maintenance') return '#f97316'; // orange-500
+                if (status === 'Working') return '#22c55e'; // green-500
+                }
+                return isDarkMode ? '#4A5568' : '#A0AEC0';
+            }}
+            nodeColor={(n) => {
+                if (n.type === 'machine') {
+                const status = (n.data as MachineNodeData).status;
+                if (status === 'Not Working') return isDarkMode ? '#991b1b' : '#fee2e2'; // red-800 / red-100
+                if (status === 'Needs Maintenance') return isDarkMode ? '#9a3412' : '#ffedd5'; // orange-800 / orange-100
+                if (status === 'Working') return isDarkMode ? '#166534' : '#dcfce7'; // green-800 / green-100
+                }
+                return isDarkMode ? 'hsl(var(--card))' : 'hsl(var(--background))';
+            }}
+            nodeBorderRadius={2}
+            maskColor={isDarkMode ? "rgba(30, 41, 59, 0.7)" : "rgba(226, 232, 240, 0.7)"} // slate-800 / slate-200
+            style={{
+                backgroundColor: isDarkMode ? "hsl(var(--muted))" : "hsl(var(--accent))",
+                borderRadius: "0.375rem", // md
+                border: `1px solid ${isDarkMode ? "hsl(var(--border))" : "hsl(var(--input))"}`,
+            }}
+            pannable
+            zoomable
+            ariaLabel="Minimap of the production line"
+            position="bottom-right"
+            />
+        )}
 
         <Controls className="!border-none !bg-transparent" position="top-right">
-          <button type="button" onClick={toggleGrid} title="Toggle Grid" className="react-flow__controls-button">
-            <Grid className="h-4 w-4" />
+          <button type="button" onClick={() => zoomIn({ duration: 300 })} title="Zoom In" className="react-flow__controls-button">
+            <Plus />
           </button>
-          <button
-            type="button"
-            onClick={() => zoomIn({ duration: 300 })}
-            title="Zoom In"
-            className="react-flow__controls-button"
-          >
-            <Plus className="h-4 w-4" />
+          <button type="button" onClick={() => zoomOut({ duration: 300 })} title="Zoom Out" className="react-flow__controls-button">
+            <Minus />
           </button>
-          <button
-            type="button"
-            onClick={() => zoomOut({ duration: 300 })}
-            title="Zoom Out"
-            className="react-flow__controls-button"
-          >
-            <Minus className="h-4 w-4" />
+          <button type="button" onClick={() => fitView({ duration: 300, padding: 0.2 })} title="Fit View" className="react-flow__controls-button">
+            <Maximize2 />
           </button>
-          <button
-            type="button"
-            onClick={() => fitView({ duration: 300, padding: 0.2 })}
-            title="Fit View"
-            className="react-flow__controls-button"
-          >
-            <Maximize2 className="h-4 w-4" />
+           <button type="button" onClick={handleRecenter} title="Recenter View" className="react-flow__controls-button">
+            <RefreshCw />
           </button>
-          <button type="button" onClick={handleReset} title="Reset View" className="react-flow__controls-button">
-            <RefreshCw className="h-4 w-4" />
+          <button type="button" onClick={toggleGrid} title={showGrid ? "Hide Grid" : "Show Grid"} className="react-flow__controls-button">
+            <Grid />
+          </button>
+           <button type="button" onClick={toggleMinimap} title={showMinimap ? "Hide Minimap" : "Show Minimap"} className="react-flow__controls-button">
+            <MapIcon /> {/* Using MapIcon for minimap toggle */}
           </button>
         </Controls>
-        <defs>
-          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-            <polygon points="0 0, 10 3.5, 0 7" fill={resolvedTheme === "dark" ? "#60A5FA" : "#2563EB"} />
-          </marker>
-        </defs>
       </ReactFlow>
+      {selectedNodeForReport && (
+        <FileReportDialog
+          isOpen={isFileDialogOpen}
+          onClose={handleCloseFileDialog}
+          machineNodeId={selectedNodeForReport.id}
+          machineName={selectedNodeForReport.data.name}
+        />
+      )}
     </div>
   );
 };
 
-const ProductionFlowchart: React.FC = (): JSX.Element => (
-  <div className="h-[600px] w-full rounded-lg border bg-background/50">
-    <ReactFlowProvider>
-      <Flow />
-    </ReactFlowProvider>
-  </div>
-);
+const ProductionFlowchart: React.FC = (): JSX.Element => {
+  const { Toaster } = useToast(); // Get Toaster if it's part of useToast, or import separately
+                                  // If Sonner or react-hot-toast is used, their Toaster component needs to be added here or at a higher level in the app.
+                                  // For Shadcn/UI, Toaster is usually at the root of the app.
+                                  // We'll assume Toaster is globally available or add it if necessary.
+                                  // For now, let's ensure it's noted. If using Shadcn's toast, it's usually in the main layout.
+                                  // Let's add a simple Toaster here if not present globally, for demo purposes.
+                                  // This might conflict if another Toaster is already in the app's layout.
+                                  // It's better to ensure a global Toaster exists.
+                                  // For this component, we just need `useToast`.
+
+  return (
+    <div className="h-[calc(100vh-200px)] w-full rounded-lg border bg-background shadow-sm">
+      {/* Ensure Toaster is rendered, typically in your app's layout file (e.g., layout.tsx)
+          If not, you might need to add <Toaster /> here or in a parent component.
+          For example, if using Shadcn UI's toast:
+          import { Toaster } from "@/components/ui/toaster";
+          ...
+          <Toaster />
+          For this exercise, I'll assume it's handled globally.
+      */}
+      <ReactFlowProvider>
+        <Flow />
+      </ReactFlowProvider>
+    </div>
+  );
+};
 
 export default ProductionFlowchart;
